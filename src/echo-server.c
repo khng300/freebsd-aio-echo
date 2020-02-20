@@ -228,7 +228,7 @@ main(int argc, char **argv)
 				close(infd);
 				continue;
 			}
-			ret = fcntl(infd, F_SETFL, fdflags | O_NONBLOCK);
+			ret = fcntl(infd, F_SETFL, fdflags);
 			if (ret == -1) {
 				perror(
 				    "fcntl(..., F_SETFL, fdflags | O_NONBLOCK)");
@@ -299,21 +299,43 @@ main(int argc, char **argv)
 				kill_sockctx(sctx, true);
 			}
 		} else {
-			memset(&sctx->aioreadcb, 0, sizeof(struct aiocb));
-			sctx->aioreadcb.aio_fildes = sctx->fd;
-			sctx->aioreadcb.aio_offset = 0;
-			sctx->aioreadcb.aio_buf = sctx->buf;
-			sctx->aioreadcb.aio_nbytes = sctx->bufsz;
-			sctx->aioreadcb.aio_sigevent.sigev_notify =
-			    SIGEV_KEVENT;
-			sctx->aioreadcb.aio_sigevent.sigev_notify_kqueue =
-			    kqfd;
-			sctx->aioreadcb.aio_sigevent.sigev_value.sigval_ptr =
-			    sctx;
-			ret = aio_read(&sctx->aioreadcb);
-			if (ret == -1) {
-				perror("aio_read");
-				kill_sockctx(sctx, true);
+			if (aioret < sctx->aiowritecb.aio_nbytes) {
+				/* This path is for socket with O_NONBLOCK. */
+				size_t rembytes = sctx->aiowritecb.aio_nbytes;
+
+				memset(&sctx->aiowritecb, 0, sizeof(struct aiocb));
+				sctx->aiowritecb.aio_fildes = sctx->fd;
+				sctx->aiowritecb.aio_offset = 0;
+				sctx->aiowritecb.aio_buf = (char *)sctx->buf + aioret;
+				sctx->aiowritecb.aio_nbytes = rembytes - aioret;
+				sctx->aiowritecb.aio_sigevent.sigev_notify =
+					SIGEV_KEVENT;
+				sctx->aiowritecb.aio_sigevent.sigev_notify_kqueue =
+					kqfd;
+				sctx->aiowritecb.aio_sigevent.sigev_value.sigval_ptr =
+					sctx;
+				ret = aio_write(&sctx->aiowritecb);
+				if (ret == -1) {
+					perror("aio_write");
+					kill_sockctx(sctx, true);
+				}
+			} else {
+				memset(&sctx->aioreadcb, 0, sizeof(struct aiocb));
+				sctx->aioreadcb.aio_fildes = sctx->fd;
+				sctx->aioreadcb.aio_offset = 0;
+				sctx->aioreadcb.aio_buf = sctx->buf;
+				sctx->aioreadcb.aio_nbytes = sctx->bufsz;
+				sctx->aioreadcb.aio_sigevent.sigev_notify =
+					SIGEV_KEVENT;
+				sctx->aioreadcb.aio_sigevent.sigev_notify_kqueue =
+					kqfd;
+				sctx->aioreadcb.aio_sigevent.sigev_value.sigval_ptr =
+					sctx;
+				ret = aio_read(&sctx->aioreadcb);
+				if (ret == -1) {
+					perror("aio_read");
+					kill_sockctx(sctx, true);
+				}
 			}
 		}
 	}
