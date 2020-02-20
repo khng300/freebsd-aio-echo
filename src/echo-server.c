@@ -300,7 +300,14 @@ main(int argc, char **argv)
 			}
 		} else {
 			if (aioret < sctx->aiowritecb.aio_nbytes) {
-				/* This path is for socket with O_NONBLOCK. */
+				/*
+				 * This path is for sockets with O_NONBLOCK only.
+				 * For sockets without O_NONBLOCK this path won't
+				 * be reached.
+				 *
+				 * Actually FreeBSD soaio implementation also does
+				 * MSG_NBIO internally.
+				 */
 				size_t rembytes = sctx->aiowritecb.aio_nbytes;
 
 				memset(&sctx->aiowritecb, 0, sizeof(struct aiocb));
